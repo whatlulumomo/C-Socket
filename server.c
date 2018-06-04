@@ -25,6 +25,7 @@ typedef struct client{
     int serverSocket;
     int iDataNum;
     int client;
+    char ID;
 } *ClientInfo;
 
 struct user{
@@ -32,18 +33,22 @@ struct user{
     char IP[INFOLENGTH];
     int Port;
     int active;
+    int client;
 };
+
+
 
 struct user User[MAX_USER];
 int usercount = 0;
 
-void AddUser(char* IP, char* port){
+char AddUser(char* IP, char* port, int client){
     for(int i=0;i<MAX_USER;i++){
         if(User[i].active == 0){
             User[i].active = 1;
             strcpy(User[i].IP, IP);
             User[i].Port = port;
-            break;
+            User[i].client = client;
+            return User[i].ID;
         }
     }
 }
@@ -77,6 +82,37 @@ void init(){
     }
 }
 
+void removeUser(char ID){
+    for(int i=0;i<MAX_USER;i++){
+        if(User[i].ID == ID){
+            User[i].active = 0;
+            memset(User[i].IP,0,INFOLENGTH);
+            User[i].Port = 0;
+            printf("USER %c Quit\n",ID);
+            break;
+        }
+    }
+}
+
+
+int sendInfotoOthers(int index, char* info, char ID){
+    // char uID = 'A' + index;
+    if(index<0 || index > MAX_USER){
+        return 0;
+    }
+    if(User[index].active == 0){
+        return 0;
+    }
+    int client = User[index].client;
+    char reply[100];
+    memset(reply, 0, 100);
+    reply[0] = ID;
+    strcat(reply, " send you an email: ");
+    strcat(reply, info);
+    send(client, reply, strlen(reply), 0);  
+    return 1;
+} 
+
 
 void* ClientPthread(void* arg){
     char buffer[200];
@@ -85,6 +121,7 @@ void* ClientPthread(void* arg){
     int serverSocket = clientnode->serverSocket;
     int iDataNum = clientnode->iDataNum;
     int client = clientnode->client;
+    char ID = clientnode->ID;
     while(1)  
     {  
         iDataNum = recv(client, buffer, 1024, 0);  
@@ -97,8 +134,10 @@ void* ClientPthread(void* arg){
         printf("\n------\nData length:%d\nData : %s\n----------\n\n", iDataNum, buffer); 
         memset(applybuffer,0,200);
 
+
         if(strcmp(buffer, "quit") == 0){  
-            char* s = "Bye";
+            char* s = "bye";
+            removeUser(ID);
             strcpy(applybuffer,s);
             break; 
         }
@@ -113,6 +152,19 @@ void* ClientPthread(void* arg){
         }
         else if(strcmp(buffer, "list") == 0){
             PrintUser(applybuffer);
+        }
+        else if(strncmp(buffer,"send",4) == 0){
+            char ID = buffer[4];
+            int index = ID-'A';
+            int flag = sendInfotoOthers(index, buffer+5, ID);
+            char* s;
+            if(flag == 1){
+                s = "The information has been sent";
+            }
+            else{
+                s = "No this user";
+            }
+            strcpy(applybuffer,s);
         }
         else{
             char* s = "I do not know";
@@ -198,13 +250,14 @@ int main()
         //表达式：char *inet_ntoa (struct in_addr);  
         printf("IP is %s\n", inet_ntoa(clientAddr.sin_addr));  
         printf("Port is %d\n", htons(clientAddr.sin_port));  
-        AddUser(inet_ntoa(clientAddr.sin_addr), htons(clientAddr.sin_port));
+        char ID = AddUser(inet_ntoa(clientAddr.sin_addr), htons(clientAddr.sin_port), client);
         pid_t pid;  
         int temp;
         struct client clientinfo;
         clientinfo.client = client;
         clientinfo.iDataNum = iDataNum;
         clientinfo.serverSocket = serverSocket;
+        clientinfo.ID = ID;
         if((temp=pthread_create(&pid,NULL,ClientPthread,(void *)&clientinfo)))  
         {  
             printf("can't create thread: %s\n",strerror(temp));  

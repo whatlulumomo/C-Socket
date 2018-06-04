@@ -20,13 +20,19 @@ typedef struct Server{
     char* sendbuf;
 }*ServerInfo;
 
+int Status = 0;
+
 void* SendPthread(void* arg){
-    char recvbuf[200];  
-    ServerInfo Info = (ServerInfo)arg;
-    send(Info->clientSocket, Info->sendbuf, strlen(Info->sendbuf), 0);  
-    int iDataNum = recv(Info->clientSocket, recvbuf, 200, 0);  
-    recvbuf[iDataNum] = '\0';  
-    printf("\nServer: %s\n", recvbuf);  
+    while(1){
+        char recvbuf[200];  
+        ServerInfo Info = (ServerInfo)arg;
+        int iDataNum = recv(Info->clientSocket, recvbuf, 200, 0);  
+        recvbuf[iDataNum] = '\0';  
+        printf("\nServer: %s\n", recvbuf);  
+        if(Status == 0){
+            break;
+        }
+    }
 }
   
 /* 
@@ -39,6 +45,7 @@ struct Server Info;
 
 int connectServer()
 {  
+    Status = 1;
     //客户端只需要一个套接字文件描述符，用于和服务器通信  
     int clientSocket;  
     //描述服务器的socket  
@@ -65,26 +72,29 @@ int connectServer()
   
     printf("connect with destination host...\n");  
 
+    Info.sendbuf = sendbuf;
+    Info.clientSocket = clientSocket;
+
+    pid_t pid;  
+    int temp;
+    if((temp=pthread_create(&pid,NULL,SendPthread,(void *)&Info)))  
+    {  
+        printf("can't create thread: %s\n",strerror(temp));  
+        return 1;  
+    }  
+
     while(1)  
     {  
         printf("Input:>");  
         scanf("%s", sendbuf);  
         printf("\n");  
-
-
-        Info.sendbuf = sendbuf;
-        Info.clientSocket = clientSocket;
-
-        pid_t pid;  
-        int temp;
-        if((temp=pthread_create(&pid,NULL,SendPthread,(void *)&Info)))  
-        {  
-            printf("can't create thread: %s\n",strerror(temp));  
-            return 1;  
-        }  
+        
         if(strcmp(sendbuf, "quit") == 0){
+            send(clientSocket, sendbuf, strlen(sendbuf), 0);  
+            Status = 0;
             break;
         } 
+        send(clientSocket, sendbuf, strlen(sendbuf), 0);  
     }  
     close(clientSocket);  
     return 0;  
